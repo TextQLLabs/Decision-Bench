@@ -28,7 +28,7 @@ entry, sets a budget, files a forecast. Decision-Bench grades that last step.
   the warehouse does not show, so the agent has to reconstruct the facts before acting on
   them. The keys are held out, so the benchmark cannot be trained on.
 - **Far from saturated.** In the paper, the strongest of 14 frontier and open-weight models
-  averages 59.5 points and scores 95 or more on 34.8% of the tasks. The
+  averages 59.1 points and scores 95 or more on 34.3% of the tasks. The
   [leaderboard](https://textql.com/decision-bench) has the current standings and a replay of
   the agents at work.
 
