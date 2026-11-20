@@ -19,7 +19,7 @@ entry, sets a budget, files a forecast. Decision-Bench grades that last step.
   company, exported in Oracle E-Business Suite form: 235 tables and 7.5 billion rows, where an
   order resolves into dispatch decisions, courier pay, merchant payouts and balanced ledger
   entries.
-- **210 tasks across the business.** Fraud rings and promotion economics, the month-end
+- **209 tasks across the business.** Fraud rings and promotion economics, the month-end
   close, courier pay, marketplace operations, dashboards and forecasting.
 - **Graded on decisions, not prose.** An agent is scored on what it **files** (bans, journal
   entries, balances, forecasts, dashboard data sources), by its consequences in the simulation,
@@ -35,8 +35,12 @@ entry, sets a budget, files a forecast. Decision-Bench grades that last step.
 This repository is everything needed to run the benchmark on your own agent or model: the
 questions, the reference agent on [Inspect AI](https://inspect.aisi.org.uk), its two tool
 servers, the sandboxes `run_python` executes in, and the model configurations of the paper's
-runs. The warehouse is on Hugging Face (see *Data*). To get a run on the leaderboard, see
-*Submitting results*.
+runs. The warehouse is on Hugging Face (see *Data*). Runs are scored by the grading service
+(see *Scoring*).
+
+This is version 1.5: 209 tasks on a rebuilt release of the warehouse, graded against that
+release's answer keys (see *Versions*). The code and tasks as first published, 210 tasks on the
+warehouse as first released, are kept on the `v1.1` branch and release.
 
 Decision-Bench is built by [TextQL](https://textql.com).
 
@@ -88,14 +92,14 @@ refused.
 
 ## Data
 
-The warehouse is released as Parquet (71 GiB) at
+The warehouse is released as Parquet (about 70 GiB) at
 [huggingface.co/datasets/textql/Decision-Bench](https://huggingface.co/datasets/textql/Decision-Bench).
-Download it to `data/decision-bench` and load it into a local DuckDB file with the as-of month
-views:
+These tasks are asked of its `v1.5` revision. Download it to `data/decision-bench` and load it
+into a local DuckDB file with the as-of month views:
 
 ```bash
 pip install -U "huggingface_hub[hf_xet]"
-hf download textql/Decision-Bench --repo-type dataset --local-dir data/decision-bench
+hf download textql/Decision-Bench --repo-type dataset --revision v1.5 --local-dir data/decision-bench
 .venv/bin/python scripts/load_duckdb.py --kit data/decision-bench --out data/decision_bench.duckdb
 ```
 
@@ -105,19 +109,31 @@ commands, and loaders for Snowflake, Databricks, Trino and Iceberg), then set
 `DECISION_BENCH_WAREHOUSE_*` in `.env`. Give the agent a read-only credential that can see
 only the benchmark's datasets.
 
-The released warehouse is a sibling build (another random seed, same configuration) of
-the one the paper's runs queried. Questions that name specific entities (courier, storefront
-or promo-code ids, or counts drawn from the data) were re-drawn from the released build by
-each question's own selection rule; their cards say so in `prompt_edit`, and `version` still
-identifies the question as it was run. The four refund-collusion searches (`col-22-*`) were
-corrected after the final run to state how their grader weighs the review, and were run again
-on the new wording; their cards say so in `prompt_revision`, and `version` identifies the
-corrected question.
+The paper's runs queried a sibling build of the warehouse (another random seed, same
+configuration), which is held out. The released build was regenerated for v1.5 from the same
+seed as the one first released, by the simulator with the fixes a review of the released data
+called for: simulator artifacts an agent could key on instead of the business facts are gone
+(for example contiguous organization-id blocks and delivery legs timed at a fixed speed); the
+courier trip clock counts every leg of a chained run, which moves courier hours and the
+minimum-pay top-ups; a free trial membership converts or closes instead of rolling on at $0; a
+storefront that takes over another's premises no longer inherits its menu; and closures over
+Thanksgiving are logged as holiday closures. Its figures differ from the first release's, so
+v1.5 scores are not comparable with scores on v1.1.
+
+Tasks that name specific entities or figures (courier, storefront or promo-code ids, counts
+and amounts drawn from the data) are drawn from the released build by each task's own
+selection rule; their cards say so in `prompt_edit`. `version` identifies the task as v1.5
+asks it, and is what the grading service checks. The four refund-collusion searches
+(`col-22-*`) were corrected after the paper's final run to state how their grader weighs the
+review; their cards say so in `prompt_revision`. A card with `paper_data_cutoff` is asked at a
+later month end on the released build than in the paper's runs: on this build the paper's
+month holds too little laundering to grade, so `data_cutoff` is the released build's month and
+`paper_data_cutoff` the paper's.
 
 ## Running
 
 ```bash
-# one model rung, all 210 questions
+# one model rung, all 209 questions
 .venv/bin/python scripts/run.py --rung opus-5.5-high
 
 # the same thing with plain Inspect
@@ -133,7 +149,8 @@ corrected question.
 
 Task options (`-T`): `questions` (`final`, `smoke`, `reference`, a JSONL path, or
 comma-separated ids), `solver` (`agent` or `reference`), `engine`, `database`, `schema`,
-`credentials`, `sandbox`, `image`, `python`, `keep_workdirs`. See `decision_bench/task.py`.
+`credentials`, `sandbox`, `image`, `python`, `keep_workdirs`, `grading`. See
+`decision_bench/task.py`.
 
 ### Settings of the paper's runs
 
@@ -169,9 +186,9 @@ results and the Mission Control journal travel inside the kernel's own stdin/std
 
 ## Reference solutions
 
-`reference/` holds reference solutions for 20 of the questions: the four that the paper and
+`reference/` holds reference solutions for 16 of the questions: the four that the paper and
 the [demo](https://textql.com/decision-bench) walk through (`col-10-refund-partnerships`,
-`ds-22-margin-monthly-per-order`, `fc-12-true-ups-may`, `mer-71-silent-takeovers`) and sixteen
+`ds-22-margin-monthly-per-order`, `fc-12-true-ups-may`, `mer-71-silent-takeovers`) and twelve
 more. Each one is the sequence of tool calls an agent would make, with a docstring that says
 what the question leaves out and the rule the solution files. `-T solver=reference` replays a
 question's reference through the same two servers a model gets, with no model, and keeps what
@@ -187,11 +204,38 @@ it files like any run:
 Every statement is written for both engines. `reference/README.md` lists the solutions and
 their scores on the paper's warehouse and on the released one.
 
-## Submitting results
+## Scoring
 
-The answer keys are held out, so the benchmark cannot be trained on. The only score computed
-here is `filed`, the share of runs that filed anything; the smoke question also reports
-`conformance`. To have runs scored against the held-out keys:
+The answer keys are held out, so the benchmark cannot be trained on. Runs are scored by the
+grading service at `https://grade.argo-bench.com` (it carries the paper's research name), which
+holds the keys and runs the benchmark's grader: send it a run's filings with an API key from
+the Decision-Bench team and it returns the task's reward. The service grades every version of
+the benchmark. Each card names its `grading_key`, the answer key and grader of v1.5's version
+of the task, and `decision_bench/remote.py` sends it with the filings, so a run of these cards
+is graded against the v1.5 warehouse's keys.
+
+```bash
+export DECISION_BENCH_GRADER_KEY=argo_...
+
+# scored as each question ends (-T grading=auto, the default, uses the service when the key is set)
+.venv/bin/inspect eval decision_bench/task.py --model anthropic/claude-opus-5-5 --reasoning-effort high
+
+# a finished log (run without a key): add the scores to it
+.venv/bin/inspect score logs/<log>.eval --scorer decision_bench/remote.py@remote_grade \
+    --action append --overwrite
+
+# many logs at once: one row per run in grades.csv, and the mean per model
+.venv/bin/python scripts/grade_remote.py --log-dir logs --out grades.csv
+```
+
+Only the reward comes back; the per-metric detail would name answer-key entities. Busy or
+rate-limited answers are retried; a refusal (a missing, revoked or invalid key, a task
+version the service does not grade) shows as a scoring error rather than a score of 0.
+Without a key the only score computed here is `filed`, the share of runs that filed
+anything; the smoke question also reports `conformance`.
+
+To have runs scored by the maintainers and considered for the
+[leaderboard](https://textql.com/decision-bench), package them:
 
 ```bash
 .venv/bin/python scripts/export_submission.py --log-dir logs --out submissions/my-run.jsonl.gz
@@ -200,8 +244,8 @@ here is `filed`, the share of runs that filed anything; the smoke question also 
 Each line is one question run: the question and its `version`, the model and its settings,
 every filing, token usage, time, and how the run ended. Open an
 [issue](https://github.com/TextQLLabs/Decision-Bench/issues) with the file (and optionally the
-Inspect logs) to have it scored and considered for the
-[leaderboard](https://textql.com/decision-bench).
+Inspect logs). `scripts/grade_remote.py --submission <file>` grades such a file with your own
+key.
 
 ## Layout
 
@@ -213,17 +257,31 @@ decision_bench/warehouse.py    read-only DuckDB / BigQuery access and month conf
 decision_bench/sandbox/        the kernel, the Docker image, the macOS Seatbelt profile
 decision_bench/console/        Mission Control, the API the agent files through
 decision_bench/reference.py    the reference solver: replays a reference/ solution, no model
+decision_bench/remote.py       scoring with the grading service (the remote_grade scorer)
 decision_bench/system_prompt.md
-tasks/final.jsonl              the 210 questions; tasks/smoke.jsonl, the conformance check
-reference/                     reference solutions for 20 questions (and the smoke check)
+tasks/final.jsonl              the 209 questions; tasks/smoke.jsonl, the conformance check
+reference/                     reference solutions for 16 questions (and the smoke check)
 rungs.json                     the model rungs of the paper's runs
 k8s/                           the sandbox namespace, RuntimeClass, NetworkPolicy, quota, RBAC;
                                k8s/templates/, the per-run pod
-scripts/                       run.py, load_duckdb.py, export_submission.py
+scripts/                       run.py, load_duckdb.py, export_submission.py, grade_remote.py
 analysis/spider2/              the paper appendix's Spider 2.0 measurements (spider2_shape.py
                                and its output); analysis/spider2/README.md says how to rerun it
 analysis/reward_hacking/       three development runs that read the grader, as scrubbed traces
 ```
+
+## Versions
+
+| version | tasks | warehouse | where |
+| --- | --- | --- | --- |
+| v1.5 | 209 | rebuilt release (same seed, simulator fixes) | `main`; dataset revision `v1.5` |
+| v1.1 | 210 | first release | branch and release `v1.1`; dataset revision `v1.1` |
+
+Since v1.1, six tasks most settings solved were retired and replaced by six harder ones in the
+same business areas (v1.4); several answer keys and graders were corrected; and v1.5 moved the
+tasks to the rebuilt warehouse, re-drawing the entities and figures they name from it.
+`vd-f2-quotes-priced-off-another-storefront` is not in v1.5: on the rebuilt warehouse no
+storefront's quotes are priced off another's, so the task has nothing to find.
 
 ## Citation
 

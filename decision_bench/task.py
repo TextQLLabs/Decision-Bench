@@ -6,7 +6,7 @@
 
 Task options (``-T name=value``); the warehouse ones default to ``DECISION_BENCH_WAREHOUSE_*``:
 
-``questions``   ``final`` (the 210 questions, tasks/final.jsonl), ``smoke`` (a no-data check of
+``questions``   ``final`` (the 209 questions, tasks/final.jsonl), ``smoke`` (a no-data check of
                 the whole path), ``reference`` (the questions with a reference solution), a
                 path to a JSONL of cards, or comma-separated question ids
 ``solver``      ``agent`` (default: the model runs the question) or ``reference`` (the
@@ -18,9 +18,12 @@ Task options (``-T name=value``); the warehouse ones default to ``DECISION_BENCH
 ``sandbox``     where ``run_python`` runs: ``local`` (default), ``docker`` or ``k8s``
 ``image``       docker / k8s: the sandbox image (default ``decision-bench-sandbox``)
 ``python``      local: the kernel's interpreter (default: this one)
+``grading``     ``auto`` (default: the grading service when ``DECISION_BENCH_GRADER_KEY`` is set),
+                ``remote`` (the grading service; the key is required) or ``none``
 
 The limits are the benchmark's: 240 minutes of wall clock and 500 model turns per question.
-Nothing here is scored against an answer key; see README.md, *Submitting results*.
+The answer keys are held by the grading service (``decision_bench/remote.py``); without a key the
+only score is ``filed``. See README.md, *Scoring*.
 """
 
 from __future__ import annotations
@@ -37,7 +40,7 @@ from inspect_ai.scorer import Score, Target, mean, scorer
 from inspect_ai.solver import TaskState
 
 from decision_bench.agent import FILINGS, decision_agent
-from decision_bench import reference
+from decision_bench import reference, remote
 
 REPO = Path(__file__).resolve().parents[1]
 CARDS = REPO / "tasks"
@@ -121,6 +124,16 @@ def conformance():
     return score
 
 
+def scorers(smoke_only: bool, grading: str) -> list:
+    """The smoke question checks itself; the final questions are graded by the service when
+    there is a key (the smoke question is not one of them)."""
+    if smoke_only:
+        return [filed(), conformance()]
+    if grading == "remote" or (grading == "auto" and remote.grader_key()):
+        return [remote.remote_grade(), filed()]
+    return [filed()]
+
+
 @task
 def decision_bench(questions: str = "final",
                    engine: str = os.environ.get("DECISION_BENCH_WAREHOUSE_ENGINE", "duckdb"),
@@ -133,10 +146,17 @@ def decision_bench(questions: str = "final",
                                                "decision-bench-sandbox"),
                    python: str = os.environ.get("DECISION_BENCH_SANDBOX_PYTHON", ""),
                    solver: str = "agent", workdir_root: str = "",
-                   keep_workdirs: bool = False) -> Task:
+                   keep_workdirs: bool = False,
+                   grading: str = "auto") -> Task:
     if solver not in ("agent", "reference"):
         raise ValueError(f"solver must be agent or reference, not {solver!r}")
-    cards = load_cards(str(questions))
+    if grading not in ("auto", "remote", "none"):
+        raise ValueError(f"grading must be auto, remote or none, not {grading!r}")
+    if grading == "remote" and not remote.grader_key():
+        raise ValueError(f"grading=remote needs an API key in {remote.KEY_ENV}")
+    # Inspect parses -T questions=a,b into a list.
+    cards = load_cards(",".join(map(str, questions)) if isinstance(questions, (list, tuple))
+                       else str(questions))
     if solver == "reference":
         missing = sorted(set(c["id"] for c in cards) - set(reference.available()))
         if missing:
@@ -159,7 +179,7 @@ def decision_bench(questions: str = "final",
         dataset=dataset,
         solver=(reference.reference_solver(**run) if solver == "reference"
                 else decision_agent(**run, max_turns=MAX_TURNS)),
-        scorer=[filed(), conformance()] if smoke_only else filed(),
+        scorer=scorers(smoke_only, grading),
         time_limit=TIME_LIMIT_S,
         name="decision-bench",
     )
