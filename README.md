@@ -234,18 +234,15 @@ version the service does not grade) shows as a scoring error rather than a score
 Without a key the only score computed here is `filed`, the share of runs that filed
 anything; the smoke question also reports `conformance`.
 
-To have runs scored by the maintainers and considered for the
-[leaderboard](https://textql.com/decision-bench), package them:
+To grade a finished set of runs as one file, package them:
 
 ```bash
 .venv/bin/python scripts/export_submission.py --log-dir logs --out submissions/my-run.jsonl.gz
 ```
 
 Each line is one question run: the question and its `version`, the model and its settings,
-every filing, token usage, time, and how the run ended. Open an
-[issue](https://github.com/TextQLLabs/Decision-Bench/issues) with the file (and optionally the
-Inspect logs). `scripts/grade_remote.py --submission <file>` grades such a file with your own
-key.
+every filing, token usage, time, and how the run ended. `scripts/grade_remote.py --submission
+<file>` grades such a file with your own key.
 
 ## Layout
 
