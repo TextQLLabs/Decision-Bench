@@ -92,7 +92,7 @@ refused.
 
 ## Data
 
-The warehouse is released as Parquet (about 70 GiB) at
+The warehouse is released as Parquet (about 73 GiB) at
 [huggingface.co/datasets/textql/Decision-Bench](https://huggingface.co/datasets/textql/Decision-Bench).
 These tasks are asked of its `v1.5` revision. Download it to `data/decision-bench` and load it
 into a local DuckDB file with the as-of month views:
